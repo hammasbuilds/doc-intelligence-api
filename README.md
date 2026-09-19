@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hammas159/doc-intelligence-api/actions/workflows/ci.yml"><img src="https://github.com/hammas159/doc-intelligence-api/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
+  <a href="https://github.com/hammasbuilds/doc-intelligence-api/actions/workflows/ci.yml"><img src="https://github.com/hammasbuilds/doc-intelligence-api/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
   <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="python">
   <img src="https://img.shields.io/badge/core%20deps-zero-success" alt="deps">
   <img src="https://img.shields.io/badge/stack-FastAPI%20%C2%B7%20Pydantic-orange" alt="stack">
@@ -209,7 +209,7 @@ MIT
 ## Run it yourself
 
 ```bash
-git clone https://github.com/hammas159/doc-intelligence-api
+git clone https://github.com/hammasbuilds/doc-intelligence-api
 cd doc-intelligence-api
 
 pip install -e .         # zero dependencies to resolve
