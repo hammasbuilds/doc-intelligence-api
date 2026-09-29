@@ -6,12 +6,23 @@ The point is not how many fields were extracted. It is how few a human is
 asked to look at, and whether the right ones were picked. No network, no OCR.
 """
 
+import contextlib
 import sys
+
+# Extracted values can contain non-Latin script (a Pakistani vendor name in Urdu, for
+# example), and Windows' default console code page (cp1252/cp437) can't encode it -
+# `print()` would raise UnicodeEncodeError. Reconfigure defensively; this is a no-op on
+# platforms whose stdout is already UTF-8.
+with contextlib.suppress(AttributeError, ValueError):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 sys.path.insert(0, "src")
 
-from docintel.api import SAMPLE_DOCUMENTS
+# `samples` and `pipeline` have zero dependencies - this import must not pull in the
+# optional `api` extra (FastAPI et al.), or `python demo.py` breaks on the README's own
+# base install.
 from docintel.pipeline import process
+from docintel.samples import SAMPLE_DOCUMENTS
 
 DOCS = [
     ("clean_invoice", "a well-formed invoice"),

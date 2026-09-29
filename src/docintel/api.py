@@ -13,9 +13,11 @@ from pathlib import Path
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .pipeline import process
 from .review import QueueMetrics
+from .samples import SAMPLE_DOCUMENTS, SAMPLE_LINE_ITEMS
 
 app = FastAPI(title="doc-intelligence-api demo")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -24,70 +26,64 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 metrics = QueueMetrics()
 history: list[dict] = []
 
-SAMPLE_DOCUMENTS = {
-    "clean_invoice": """TAX INVOICE
-Invoice No: INV-2026-0148
-Invoice Date: 11/09/2026
-Due Date: 25/09/2026
-Vendor: Lahore Textiles Pvt Ltd
-NTN: 1234567
-STRN: 03-02-9999-123-45
-Subtotal: 23,700.00
-Sales Tax: 4,029.00
-Total: 27,729.00
-IBAN: PK36SCBL0000001123456702
-""",
-    "broken_total_invoice": """TAX INVOICE
-Invoice No: INV-2026-0201
-Invoice Date: 03/09/2026
-Due Date: 18/09/2026
-Vendor: Karachi Electronics Traders
-NTN: 7654321
-Subtotal: 12,000.00
-Sales Tax: 2,040.00
-Total: 27,300.00
-""",
-    "contract": """SERVICE AGREEMENT
-Party A: Faisalabad Agro Exports
-Party B: NIBGE Testing Services
-Effective Date: 01/06/2026
-Expiry Date: 31/05/2027
-Governing Law: Islamic Republic of Pakistan
-""",
-    "cnic": """NATIONAL IDENTITY CARD
-Name: Amina Sheikh
-CNIC Number: 35202-1234567-1
-Date of Birth: 14/03/1994
-Date of Expiry: 14/03/2032
-""",
-}
-
-SAMPLE_LINE_ITEMS = {
-    "clean_invoice": [{"amount": "12000"}, {"amount": "8500"}, {"amount": "3200"}],
-    "broken_total_invoice": [{"amount": "6000"}, {"amount": "6000"}],
-}
+# Starlette's own default for a form field/part (see starlette.formparsers); kept in
+# sync here only for the friendly message below, not to change the actual limit.
+MAX_FIELD_SIZE_KB = 1024
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request) -> HTMLResponse:
+def _page(request: Request, *, status_code: int = 200, **context) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "index.html",
         {
             "samples": SAMPLE_DOCUMENTS,
             "result": None,
+            "error": None,
             "metrics": metrics.summary(),
             "history": history,
+            **context,
         },
+        status_code=status_code,
     )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def friendly_http_error(request: Request, exc: StarletteHTTPException) -> HTMLResponse:
+    """Starlette raises a plain HTTPException(400) when a pasted field is over the
+    per-field size limit (see MAX_FIELD_SIZE_KB); without this handler the user gets
+    a raw `{"detail": "..."}` body instead of the same page they were just looking at.
+    """
+    if exc.status_code == 400 and request.url.path == "/process":
+        return _page(
+            request,
+            error=(
+                f"That document is too large to paste into this form "
+                f"(over {MAX_FIELD_SIZE_KB}KB). Use the library directly instead: "
+                f"`from docintel import process`."
+            ),
+            status_code=400,
+        )
+    return HTMLResponse(str(exc.detail), status_code=exc.status_code)
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request) -> HTMLResponse:
+    return _page(request)
 
 
 @app.post("/process", response_class=HTMLResponse)
 async def process_document(
     request: Request,
-    text: str = Form(...),
+    text: str = Form(""),
     sample_key: str = Form(""),
 ) -> HTMLResponse:
+    if not text.strip():
+        return _page(
+            request,
+            submitted_text=text,
+            error="Paste some document text first (or pick a sample above).",
+        )
+
     line_items = SAMPLE_LINE_ITEMS.get(sample_key)
     document = process(text, line_items=line_items)
     metrics.add(document)
@@ -106,19 +102,13 @@ async def process_document(
         for item in document.review_queue
     ]
 
-    return templates.TemplateResponse(
+    return _page(
         request,
-        "index.html",
-        {
-            "samples": SAMPLE_DOCUMENTS,
-            "submitted_text": text,
-            "result": {
-                "summary": summary,
-                "values": document.values,
-                "review_queue": review_queue,
-                "auto_approved": document.auto_approved,
-            },
-            "metrics": metrics.summary(),
-            "history": history,
+        submitted_text=text,
+        result={
+            "summary": summary,
+            "values": document.values,
+            "review_queue": review_queue,
+            "auto_approved": document.auto_approved,
         },
     )
