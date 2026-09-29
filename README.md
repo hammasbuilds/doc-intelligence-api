@@ -172,7 +172,8 @@ finance documents are the ones where the characters were read perfectly.*
 
 ## Tests
 
-**44 tests. No dependencies, no OCR engine, no documents.**
+**48 tests with the base install (55 with the `api` extra). No dependencies, no OCR
+engine, no documents.**
 
 | Covered | |
 |---|---|
@@ -182,6 +183,7 @@ finance documents are the ones where the characters were read perfectly.*
 | Classification | recognised, unknown, **ambiguous**, runner-up reported |
 | Extraction | **word boundaries**, longest label wins, agreement raises confidence, never reaches 1.0 |
 | Routing | straight-through, **per-field not per-document**, specific questions, validation overrides confidence, unclassifiable escalates whole, policy strictness |
+| Robustness | `None`/non-string text and malformed `line_items` are routed for review, never a raw crash |
 | Metrics | straight-through rate, worst field, empty queue |
 
 ## Limits
@@ -195,6 +197,13 @@ finance documents are the ones where the characters were read perfectly.*
 - Confidence is a routing score, not a calibrated probability, and is deliberately not
   presented as one.
 - Three schemas ship (invoice, contract, CNIC). Adding one is a `DocumentSchema`.
+- **Windows console:** extracted values can contain non-Latin script (an Urdu vendor
+  name, for example — squarely inside this repo's own Pakistani-documents pitch).
+  Windows' default console code page (cp1252/cp437) cannot encode that, and a plain
+  `print(doc.values[...])` will raise `UnicodeEncodeError`. `demo.py` reconfigures its
+  own stdout to UTF-8 defensively; in your own script, either do the same
+  (`sys.stdout.reconfigure(encoding="utf-8")`) or run `chcp 65001` /
+  set `PYTHONIOENCODING=utf-8` first.
 
 ## Keywords
 
@@ -213,7 +222,8 @@ git clone https://github.com/hammasbuilds/doc-intelligence-api
 cd doc-intelligence-api
 
 pip install -e .         # zero dependencies to resolve
-pytest -q                # 44 tests, no OCR engine, no documents
+pytest -q                # 48 tests, no OCR engine, no documents
+python demo.py           # the Output section below, reproduced
 ```
 
 ```python
@@ -248,7 +258,10 @@ uvicorn docintel.api:app --reload --app-dir src
 ```
 
 Local only, in-memory metrics — this is a demo of the library above, not a deployed
-service.
+service. The paste box is capped at Starlette's default of **1MB per form field**; a
+document larger than that (a long multi-page contract, say) gets a friendly in-page
+message rather than a raw error — call `docintel.process()` directly for anything
+bigger, it has no such limit.
 
 ## Problems hit while building this
 
