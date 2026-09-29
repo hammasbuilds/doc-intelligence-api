@@ -131,7 +131,10 @@ class TestCrossFieldValidation:
         assert not [i for i in INVOICE.validate(values) if i.field == "tax"]
 
     def test_missing_inputs_skip_the_rule_rather_than_failing(self):
-        assert INVOICE.validate({"subtotal": "100"}) is not None
+        """With no `total` to compare against, `totals_are_consistent` must skip
+        rather than raise or report a spurious cross-field mismatch."""
+        issues = INVOICE.validate({"subtotal": "100"})
+        assert not any(i.kind == "cross_field" and i.field == "total" for i in issues)
 
 
 class TestClassification:
@@ -248,6 +251,33 @@ class TestRouting:
             escalate_on_disagreement=False,
         )
         assert process(broken, line_items=ITEMS, policy=lenient).auto_approved
+
+
+class TestMalformedInput:
+    """An OCR/table-extraction pipeline upstream of this one routinely hands over
+    `None` or wrongly-shaped data. `process()` must route that for human review,
+    never crash with a raw AttributeError - a crash takes down the caller's request,
+    which is exactly what this library exists to avoid."""
+
+    def test_none_text_is_routed_for_review_not_a_crash(self):
+        document = process(None)
+        assert document.review_queue[0].field == "document_type"
+        assert not document.auto_approved
+
+    def test_non_string_text_is_coerced_not_a_crash(self):
+        document = process(12345)
+        assert document.review_queue[0].field == "document_type"
+
+    def test_malformed_line_items_are_routed_for_review_not_a_crash(self):
+        """`line_items=[100, 50]` - raw numbers instead of {"amount": ...} dicts, as a
+        careless caller's table extractor might produce."""
+        document = process(INVOICE_TEXT, line_items=[100, 50])
+        assert any(i.field == "line_items" for i in document.review_queue)
+        assert not document.auto_approved
+
+    def test_none_line_items_entries_are_routed_for_review_not_a_crash(self):
+        document = process(INVOICE_TEXT, line_items=[None, {"amount": "100"}])
+        assert any(i.field == "line_items" for i in document.review_queue)
 
 
 class TestQueueMetrics:

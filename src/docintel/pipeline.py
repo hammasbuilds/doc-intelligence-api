@@ -8,7 +8,7 @@ from .schema import SCHEMAS
 
 
 def process(
-    text: str,
+    text: str | None,
     *,
     policy: ReviewPolicy | None = None,
     document_type: str | None = None,
@@ -19,7 +19,13 @@ def process(
     `document_type` overrides classification, for callers who already know. `line_items`
     are supplied separately because table extraction is a different problem from field
     extraction, and pretending otherwise produces a system that is bad at both.
+
+    `text` tolerates `None` and non-`str` input rather than raising: OCR pipelines
+    routinely return `None` for a page that failed to read, and a caller passing that
+    straight through should get an unclassifiable document routed for human review,
+    not a crash that takes down the request.
     """
+    text = "" if text is None else text if isinstance(text, str) else str(text)
     classification = classify(text)
     if document_type:
         from .extract import Classification

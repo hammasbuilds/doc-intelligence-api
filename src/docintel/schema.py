@@ -118,7 +118,9 @@ def parse_date(raw: str) -> dt.date | None:
     return None
 
 
-_FORMATS: dict[str, tuple[re.Pattern, str]] = {
+# Public: other modules (extract.py's _format_ok) key off this too, so it isn't
+# private to this module even though it started that way.
+FIELD_FORMATS: dict[str, tuple[re.Pattern, str]] = {
     FieldType.CNIC: (CNIC, "expected 00000-0000000-0"),
     FieldType.NTN: (NTN, "expected 7 digits, optionally with a check digit"),
     FieldType.STRN: (STRN, "expected 00-00-0000-000-00"),
@@ -152,8 +154,8 @@ def validate_field(spec: FieldSpec, value) -> list[Issue]:
             return [Issue(spec.name, "type", f"{value!r} is not a recognised date", severity)]
         return []
 
-    if spec.type in _FORMATS:
-        pattern, expectation = _FORMATS[spec.type]
+    if spec.type in FIELD_FORMATS:
+        pattern, expectation = FIELD_FORMATS[spec.type]
         if not pattern.match(str(value).strip()):
             return [Issue(spec.name, "format", f"{value!r}: {expectation}", severity)]
 
@@ -177,6 +179,18 @@ def line_items_sum_to_subtotal(tolerance: Decimal = Decimal("0.01")) -> CrossFie
         subtotal = parse_money(fields.get("subtotal"))
         if not items or subtotal is None:
             return []
+        if not all(isinstance(i, dict) for i in items):
+            # A table-extraction step handed us rows that aren't `{"amount": ...}`
+            # mappings - can't sum them, but that's a reason to ask a human, not a
+            # reason to crash the caller's request.
+            return [
+                Issue(
+                    "line_items",
+                    "type",
+                    f"line_items must be a list of {{'amount': ...}} objects; got {items!r}",
+                    "error",
+                )
+            ]
         total = sum((parse_money(i.get("amount")) or Decimal(0)) for i in items)
         if abs(total - subtotal) > tolerance:
             return [
