@@ -27,7 +27,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
-from .schema import SCHEMAS, DocumentSchema, FieldType, parse_date, parse_money
+from .schema import FIELD_FORMATS, SCHEMAS, DocumentSchema, FieldType, parse_date, parse_money
 
 # --- classification ---------------------------------------------------------------
 
@@ -251,10 +251,8 @@ def _format_ok(value: str, spec_type: str) -> bool:
         return parse_money(value) is not None
     if spec_type == FieldType.DATE:
         return parse_date(value) is not None
-    from .schema import _FORMATS
-
-    if spec_type in _FORMATS:
-        return bool(_FORMATS[spec_type][0].match(value.strip()))
+    if spec_type in FIELD_FORMATS:
+        return bool(FIELD_FORMATS[spec_type][0].match(value.strip()))
     return bool(value.strip())
 
 
