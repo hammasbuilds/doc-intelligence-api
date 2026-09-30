@@ -6,8 +6,7 @@
   <a href="#confidence-that-means-something">Confidence</a> &middot;
   <a href="#pakistani-formats-because-most-idp-tools-dont-know-them">Pakistani formats</a> &middot;
   <a href="#the-metric-the-business-case-rests-on">The metric</a> &middot;
-  <a href="#usage">Usage</a> &middot;
-  <a href="#problems-hit-while-building-this">Problems hit</a>
+  <a href="#usage">Usage</a> 
 </p>
 
 <p align="center">
@@ -262,35 +261,3 @@ service. The paste box is capped at Starlette's default of **1MB per form field*
 document larger than that (a long multi-page contract, say) gets a friendly in-page
 message rather than a raw error — call `docintel.process()` directly for anything
 bigger, it has no such limit.
-
-## Problems hit while building this
-
-**The demo dashboard silently 500'd on every page load, until it didn't silently do
-anything — it hard-crashed with `TypeError: unhashable type: 'dict'`.** The installed
-`starlette` (1.6.0) changed `Jinja2Templates.TemplateResponse` from the old two-argument
-form `TemplateResponse(name, context)` to a `request`-first
-`TemplateResponse(request, name, context)`. Calling it the old way doesn't warn or
-deprecate — it silently binds `request="index.html"` and `name=<the context dict>`, and
-the crash only surfaces two calls later, inside Jinja2's template cache, when it tries to
-use that dict as part of a cache key. *Fixed* by passing `request` as the first
-positional argument everywhere `TemplateResponse` is called.
-
-**An invoice's total was silently extracted as its subtotal.** The label pattern `total`
-matched inside the word **Sub*total*** on the line above, so a clean invoice reported
-`total = 23,700.00` when the document plainly said `27,729.00`.
-
-This is the worst shape a bug can take in document processing: a wrong number that is
-the *right shape*, in the *right field*, taken from a *real line* of the document.
-Nothing downstream can detect it — no confidence score, no schema check, no type
-validation. *Fixed* with a leading word boundary, and longest-label-first matching so
-`invoice date` beats `invoice no` on a line containing both.
-
-**`Rs. 99.50` failed to parse.** Stripping every non-digit character kept the full stop
-in `Rs.`, producing `..99.50`, which then failed as a decimal — and amounts are written
-that way on most invoices here, so it is not an edge case. *Fixed* by **matching** the
-number with a regex rather than stripping down to it.
-
-**Routing was per document before it was per field.** Rejecting a forty-field invoice
-because one field was uncertain sends a human forty fields to re-key when they needed to
-check one — which is the difference between a system that saves money and one that costs
-more than the manual process it replaced.
