@@ -159,6 +159,38 @@ def labelled(*labels: str, pattern: str = r"[^\n]{1,60}") -> Extractor:
     return extract
 
 
+# A money value: digits with Western (1,234,567) or South Asian lakh (12,34,567)
+# grouping, optionally with paise. It must not end on a separator, and the lookahead
+# stops it reading a percentage ("18%"), a registration number ("03-02-...") or a date.
+_AMOUNT_VALUE = r"\d(?:[\d,]*\d)?(?:\.\d{1,2})?(?![\d%/\-]|\.\d|\s*%)"
+# Currency tokens written before an amount on Pakistani / South Asian invoices.
+_CURRENCY = r"(?:PKR|Rs|INR|USD|\$|₨)\.?"
+# An optional rate between a label and its amount: "GST 18%", "Sales Tax @ 17%",
+# "Tax (18%)". Skipping it is what keeps the *rate* out of the tax amount field.
+_RATE = r"(?:[ \t]*(?:@[ \t]*)?\(?[ \t]*\d{1,2}(?:\.\d+)?[ \t]*%[ \t]*\)?)?"
+
+
+def money_labelled(*labels: str) -> Extractor:
+    """Find an amount on the same line as one of its labels.
+
+    Accepts `Total: Rs. 11,800.00`, `Total PKR 11,800`, `GST 18%: Rs 1,800.00` and
+    `Subtotal: 10,000.00`, and returns only the number. Stays on the label's line
+    (spaces and tabs only, never a newline) so a heading like "TAX INVOICE" cannot borrow the amount
+    printed on the line below it.
+    """
+    joined = "|".join(re.escape(x) for x in sorted(labels, key=len, reverse=True))
+    regex = re.compile(
+        rf"\b(?:{joined})\b{_RATE}[ \t]*[:\-=]?[ \t]*(?:{_CURRENCY}[ \t]*)?"
+        rf"(?P<value>{_AMOUNT_VALUE})",
+        re.I,
+    )
+
+    def extract(text: str) -> list[str]:
+        return [m.group("value") for m in regex.finditer(text)]
+
+    return extract
+
+
 def by_pattern(pattern: re.Pattern) -> Extractor:
     def extract(text: str) -> list[str]:
         return [m.group(0).strip() for m in pattern.finditer(text)]
@@ -186,20 +218,42 @@ FIELD_EXTRACTORS: dict[str, dict[str, list[Extractor]]] = {
             by_pattern(_DATE),
         ],
         "due_date": [labelled("due date", "payment due", pattern=r"[\d/\-.]{8,10}")],
-        "vendor_name": [labelled("vendor", "from", "supplier", "sold by")],
+        "vendor_name": [
+            labelled(
+                "vendor name",
+                "vendor",
+                "supplier name",
+                "supplier",
+                "seller",
+                "sold by",
+                "billed by",
+                "bill from",
+                "issued by",
+                "company name",
+                "from",
+            )
+        ],
         "vendor_ntn": [labelled("ntn", pattern=r"\d{7}(?:-\d)?"), by_pattern(_NTN)],
         "vendor_strn": [
             labelled("strn", "sales tax reg", pattern=r"[\d\-]{15,20}"),
             by_pattern(_STRN),
         ],
-        "subtotal": [
-            labelled("subtotal", "sub total", "net amount", pattern=r"[\d,]+(?:\.\d{2})?")
+        "subtotal": [money_labelled("subtotal", "sub total", "sub-total", "net amount")],
+        "tax": [
+            money_labelled(
+                "sales tax amount", "sales tax", "gst amount", "gst", "vat", "tax amount", "tax"
+            )
         ],
-        "tax": [labelled("sales tax", "gst", "tax", pattern=r"[\d,]+(?:\.\d{2})?")],
-        "discount": [labelled("discount", pattern=r"[\d,]+(?:\.\d{2})?")],
+        "discount": [money_labelled("discount")],
         "total": [
-            labelled(
-                "grand total", "total amount", "amount due", "total", pattern=r"[\d,]+(?:\.\d{2})?"
+            money_labelled(
+                "grand total",
+                "total amount",
+                "invoice total",
+                "amount due",
+                "amount payable",
+                "net payable",
+                "total",
             )
         ],
         "iban": [labelled("iban", pattern=r"PK\d{2}[A-Z]{4}\d{16}"), by_pattern(_IBAN)],
@@ -222,9 +276,7 @@ FIELD_EXTRACTORS: dict[str, dict[str, list[Extractor]]] = {
         "expiry_date": [
             labelled("expiry date", "terminates on", "until", pattern=r"[\d/\-.]{8,10}")
         ],
-        "value": [
-            labelled("consideration", "contract value", "sum of", pattern=r"[\d,]+(?:\.\d{2})?")
-        ],
+        "value": [money_labelled("consideration", "contract value", "sum of")],
         "governing_law": [labelled("governing law", "governed by")],
     },
 }
