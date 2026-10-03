@@ -105,7 +105,9 @@ downstream system to treat the value as certain, and nothing here can establish 
 ## Pakistani formats, because most IDP tools don't know them
 
 `CNIC` `35202-1234567-1` · `NTN` `1234567` · `STRN` `03-02-9999-123-45` ·
-`IBAN` `PK36SCBL0000001123456702` · `+92` phone numbers
+`IBAN` `PK36SCBL0000001123456702` · `+92` phone numbers ·
+amounts as `Rs. 11,800.00`, `PKR 11,800`, `Rs 1,18,000` (lakh grouping), with the tax
+amount taken from `GST 18%: Rs. 1,800.00` rather than the rate
 
 Dates parse **day-first**. Pakistan writes DD/MM/YYYY, and defaulting to month-first
 reads `03/04/2026` as 3 April in one system and 4 March in another — silently wrong dates
@@ -171,7 +173,8 @@ finance documents are the ones where the characters were read perfectly.*
 
 ## Tests
 
-**48 tests with the base install (55 with the `api` extra). No dependencies, no OCR
+**82 tests with `pip install -e ".[api,dev]"`; with the base `pip install -e ".[dev]"`
+it is 75 passed + 1 skipped (the API smoke-test module needs the `api` extra). No OCR
 engine, no documents.**
 
 | Covered | |
@@ -180,6 +183,7 @@ engine, no documents.**
 | Formats | CNIC, NTN, STRN, IBAN, phone; critical vs non-critical severity |
 | Cross-field | line-item sum, total arithmetic, date order, implausible tax rate |
 | Classification | recognised, unknown, **ambiguous**, runner-up reported |
+| Amounts | `Rs.` / `Rs` / `PKR` / `₨` prefixes, lakh grouping (`1,18,000.00`), **tax amount not the `18%` rate**, a real-looking Rs. invoice approved when it adds up and flagged when it does not |
 | Extraction | **word boundaries**, longest label wins, agreement raises confidence, never reaches 1.0 |
 | Routing | straight-through, **per-field not per-document**, specific questions, validation overrides confidence, unclassifiable escalates whole, policy strictness |
 | Robustness | `None`/non-string text and malformed `line_items` are routed for review, never a raw crash |
@@ -220,8 +224,8 @@ MIT
 git clone https://github.com/hammasbuilds/doc-intelligence-api
 cd doc-intelligence-api
 
-pip install -e .         # zero dependencies to resolve
-pytest -q                # 48 tests, no OCR engine, no documents
+pip install -e ".[dev]"  # the library has zero dependencies; dev adds pytest, ruff, httpx2
+pytest -q                # 75 passed, 1 skipped; 82 passed after pip install -e ".[api]"
 python demo.py           # the Output section below, reproduced
 ```
 

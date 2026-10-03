@@ -10,9 +10,11 @@ dependencies = []
 
 [project.optional-dependencies]
 api = ["fastapi>=0.115", "uvicorn[standard]>=0.32", "pydantic>=2.9", "jinja2>=3.1", "python-multipart>=0.0.9"]
+# Test tooling. httpx2 is what starlette's TestClient imports; without it the API tests skip.
+dev = ["pytest>=8.3", "ruff>=0.8", "httpx2"]
 
 [dependency-groups]
-dev = ["pytest>=8.3", "ruff>=0.8"]
+dev = ["pytest>=8.3", "ruff>=0.8", "httpx2"]
 
 [build-system]
 requires = ["hatchling"]
@@ -30,3 +32,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    # Raised inside starlette's own testclient module (anyio alias rename); not ours to fix.
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]
